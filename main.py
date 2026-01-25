@@ -1,89 +1,131 @@
 import telebot
 import base64
 import json
-import io
 from telebot import types
 
-# توكن البوت
+# --- الإعدادات الأساسية ---
 TOKEN = '8367506658:AAFJVj903YeBPWGyCfVlUQcLPbnEDO5wV8Q'
+ADMIN_ID = 1049669606  # !!! ضع أيديك هنا
+CHANNELS = ["@teamofghost"] # ضع قنواتك هنا
 bot = telebot.TeleBot(TOKEN)
 
-# ذاكرة مؤقتة لتخزين بيانات المستخدم
-user_data = {}
+# تخزين مؤقت للمستخدمين (يتم تصفيره عند إعادة تشغيل الكود)
+authorized_users = set()
+user_steps = {}
 
-@bot.message_handler(func=lambda m: True)
-def ask_network(message):
-    url = message.text.strip()
-    if "cloudshell.dev" in url:
-        user_data[message.chat.id] = {'url': url}
+def check_sub(user_id):
+    """التحقق من الاشتراك في القنوات"""
+    for channel in CHANNELS:
+        try:
+            status = bot.get_chat_member(channel, user_id).status
+            if status in ['left', 'kicked']:
+                return False
+        except:
+            continue 
+    return True
+
+@bot.message_handler(commands=['start'])
+def start(message):
+    user_id = message.from_user.id
+    
+    # 1. فحص الاشتراك الإجباري
+    if not check_sub(user_id):
         markup = types.InlineKeyboardMarkup()
-        btn_asia = types.InlineKeyboardButton("Asiacell (آسيا)", callback_data="net_asia")
-        btn_zain = types.InlineKeyboardButton("Zain (زين/أثير)", callback_data="net_zain")
-        markup.add(btn_asia, btn_zain)
-        bot.reply_to(message, "🌐 اختر الشبكة أولاً:", reply_markup=markup)
-    else:
-        bot.reply_to(message, "⚠️ أرسل رابط Cloud Shell الصحيح.")
+        for ch in CHANNELS:
+            markup.add(types.InlineKeyboardButton("اشترك هنا 🔗", url=f"https://t.me/{ch.replace('@','')}"))
+        markup.add(types.InlineKeyboardButton("تم الاشتراك ✅", callback_data="verify_sub"))
+        bot.send_message(user_id, "⚠️ عذراً، يجب أن تشترك في القناة أولاً لاستخدام البوت:", reply_markup=markup)
+        return
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("net_"))
-def process_network(call):
-    chat_id = call.message.chat.id
-    user_data[chat_id]['network'] = call.data
-    
-    markup = types.InlineKeyboardMarkup()
-    btn_yes = types.InlineKeyboardButton("نعم، عندي باقة ✅", callback_data="social_yes")
-    btn_no = types.InlineKeyboardButton("لا، بدون باقة ❌", callback_data="social_no")
-    markup.add(btn_yes, btn_no)
-    
-    bot.edit_message_text("❓ هل تملك باقة سوشيال (فيسبوك/واتساب)؟", chat_id, call.message.message_id, reply_markup=markup)
+    # 2. فحص موافقة المالك
+    if user_id not in authorized_users and user_id != ADMIN_ID:
+        bot.send_message(ADMIN_ID, f"🔔 طلب تفعيل جديد:\n👤 {message.from_user.first_name}\n🆔 `{user_id}`", 
+                         reply_markup=types.InlineKeyboardMarkup().add(
+                             types.InlineKeyboardButton("تفعيل الحساب ✅", callback_data=f"auth_{user_id}")))
+        bot.send_message(user_id, "⏳ تم إرسال طلبك للمالك. يرجى الانتظار حتى يتم تفعيل حسابك...")
+        return
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("social_"))
-def process_final(call):
-    chat_id = call.message.chat.id
-    url = user_data[chat_id]['url']
-    network = user_data[chat_id]['network']
-    has_social = call.data == "social_yes"
-    
-    clean_domain = url.replace("https://", "").replace("http://", "").split('/')[0].split('?')[0]
-    
-    # تحديد الهوست بناءً على نوع الشبكة ووجود الباقة
-    if "asia" in network:
-        sni = "www.facebook.com" if has_social else "free.asiacell.com"
-        net_label = "Asiacell 🥝"
-    else:
-        sni = "c.whatsapp.net" if has_social else "zain.com.iq"
-        net_label = "Zain 💎"
+    bot.send_message(user_id, "🚀 أهلاً بك في بوت VVIP. أرسل الآن رابط Cloud Shell الخاص بك.")
 
-    config = {
-        "type": "VLESS",
-        "name": f"🔐 {net_label} | {'Social' if has_social else 'No-Package'}",
-        "vlessTunnelConfig": {
-            "v2rayConfig": {
-                "host": sni,
-                "port": 443,
-                "uuid": "aaaa1111-bbbb-4ccc-8ddd-eeeeffff0000", 
-                "serverNameIndication": sni,
-                "wsPath": "/",
-                "wsHeaderHost": clean_domain
-            },
-            "injectConfig": {
-                "enabled": True,
-                "mode": "PROXY",
-                "proxyHost": "157.240.9.39" if has_social else "", # ترك البروكسي فارغ في حالة بدون باقة ليعتمد على الـ SNI
-                "payload": f"GET / HTTP/1.1\r\nHost: {clean_domain}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n"
-            }
-        },
-        "isLocked": True
+@bot.callback_query_handler(func=lambda call: True)
+def callback_handler(call):
+    if call.data == "verify_sub":
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+        start(call.message)
+    
+    elif call.data.startswith("auth_"):
+        user_to_auth = int(call.data.split("_")[1])
+        authorized_users.add(user_to_auth)
+        bot.answer_callback_query(call.id, "تم تفعيل المستخدم!")
+        bot.send_message(user_to_auth, "🎉 مبروك! تم تفعيل حسابك من قبل المالك. يمكنك الآن استخدام البوت.")
+        bot.edit_message_text(f"✅ تم تفعيل {user_to_auth}", ADMIN_ID, call.message.message_id)
+
+    elif call.data.startswith("net_"):
+        net_type = call.data.split("_")[1]
+        user_steps[call.message.chat.id]['net'] = net_type
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("سوشيال (بايلود)", callback_data="mode_social"),
+                   types.InlineKeyboardButton("بدون باقة (مباشر)", callback_data="mode_direct"))
+        bot.edit_message_text("🛠️ اختر نوع الباقة (الثغرة):", call.message.chat.id, call.message.message_id, reply_markup=markup)
+
+    elif call.data.startswith("mode_"):
+        mode = call.data.split("_")[1]
+        chat_id = call.message.chat.id
+        create_file(chat_id, mode)
+
+def create_file(chat_id, mode):
+    data = user_steps.get(chat_id)
+    if not data: return
+    
+    # استخراج الهوست من الرابط
+    raw_url = data['url']
+    clean_host = raw_url.replace("https://", "").split("/")[0]
+    
+    # [cite_start]إعدادات V2Ray (VLESS) بناءً على الملف الذي أرسلته [cite: 1]
+    v2ray_config = {
+        "host": clean_host,
+        "port": 443,
+        "uuid": "aaaa1111-bbbb-4ccc-8ddd-eeeeffff0000", # UUID موحد
+        "serverNameIndication": "www.google.com",
+        "wsPath": "/Telegram/@AM2_D3",
+        "wsHeaderHost": clean_host
     }
-
-    encoded = base64.b64encode(json.dumps(config).encode()).decode()
-    final_result = f"darktunnel://{encoded}"
     
-    file_io = io.BytesIO(final_result.encode())
-    file_io.name = f"{net_label}_{'Social' if has_social else 'Free'}.dark"
+    # إعدادات الحقن (Injection)
+    inject_config = {
+        "enabled": True if mode == "social" else False,
+        "mode": "PROXY",
+        [cite_start]"proxyHost": "157.240.9.39", # بروكسي فيسبوك [cite: 1]
+        "payload": "CONNECT [host]:[port] HTTP/1.1[crlf]Host: [host][crlf]Connection: keep-alive[crlf][crlf]"
+    }
+    
+    final_json = {
+        "type": "VLESS",
+        "name": f"VVIP-{data['net'].upper()}",
+        "vlessTunnelConfig": {
+            "v2rayConfig": v2ray_config,
+            "injectConfig": inject_config
+        },
+        "isLocked": True # قفل الملف لحماية سيرفرك
+    }
+    
+    # تحويل إلى صيغة Dark Tunnel
+    json_str = json.dumps(final_json)
+    encoded = base64.b64encode(json_str.encode()).decode()
+    dark_config = f"darktunnel://{encoded}"
+    
+    # إرسال النتيجة
+    bot.send_message(chat_id, f"✅ تم صنع ملفك بنجاح!\n\n`{dark_config}`", parse_mode="Markdown")
 
-    bot.delete_message(chat_id, call.message.message_id)
-    bot.send_document(chat_id, file_io, caption=f"✅ تم تجهيز الملف!\n🌐 الشبكة: {net_label}\n💡 الحالة: {'باقة سوشيال' if has_social else 'بدون باقة'}")
-    del user_data[chat_id]
+@bot.message_handler(func=lambda m: "cloudshell.dev" in m.text)
+def handle_link(message):
+    if message.from_user.id not in authorized_users and message.from_user.id != ADMIN_ID:
+        return
+    
+    user_steps[message.chat.id] = {'url': message.text.strip()}
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("آسيا سيل", callback_data="net_asia"),
+               types.InlineKeyboardButton("زين العراق", callback_data="net_zain"))
+    bot.reply_to(message, "🌐 اختر شبكتك الآن:", reply_markup=markup)
 
-print("البوت الذكي يعمل الآن...")
 bot.polling()
