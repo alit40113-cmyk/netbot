@@ -8,7 +8,7 @@ from telebot import types
 
 # --- الإعدادات ---
 TOKEN = '8367506658:AAFJVj903YeBPWGyCfVlUQcLPbnEDO5wV8Q'
-ADMIN_ID = 123456789  # أيديك هنا
+ADMIN_ID = 1049669606  # أيديك هنا
 CHANNELS = ["@teamofghost"]
 bot = telebot.TeleBot(TOKEN)
 
@@ -108,3 +108,4 @@ def handle_link(message):
         bot.reply_to(message, "🌐 اختر الشبكة (سيتم توليد ملف مشفر طويل):", reply_markup=markup)
 
 bot.polling()
+
