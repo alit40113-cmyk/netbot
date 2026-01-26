@@ -5,11 +5,12 @@ import io
 import random
 import string
 from telebot import types
+from urllib.parse import urlparse
 
 # --- الإعدادات ---
 TOKEN = '8367506658:AAFJVj903YeBPWGyCfVlUQcLPbnEDO5wV8Q'
 ADMIN_ID = 1049669606 
-CHANNELS = ["@teamofghost"] # ضع يوزر قناتك الحقيقي هنا
+CHANNELS = ["@teamofghost"] # تأكد من أن البوت آدمن في القناة
 bot = telebot.TeleBot(TOKEN)
 
 MY_RIGHTS = "Alikhalafm"
@@ -32,7 +33,6 @@ def check_sub(user_id):
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.from_user.id
-    # 1. فحص الاشتراك
     if not check_sub(user_id):
         markup = types.InlineKeyboardMarkup()
         for ch in CHANNELS:
@@ -41,13 +41,32 @@ def start(message):
         bot.send_message(user_id, f"⚠️ مرحباً بك.. اشترك بقناة {MY_RIGHTS} أولاً:", reply_markup=markup)
         return
 
-    # 2. فحص الموافقة
     if user_id not in authorized_users and user_id != ADMIN_ID:
         bot.send_message(ADMIN_ID, f"🔔 طلب تفعيل جديد:\n👤 {message.from_user.first_name}\n🆔 `{user_id}`", 
                          reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("تفعيل ✅", callback_data=f"auth_{user_id}")))
-        bot.send_message(user_id, f"⏳ طلبك بانتظar موافقة المالك {MY_RIGHTS}...")
+        bot.send_message(user_id, f"⏳ طلبك بانتظار موافقة {MY_RIGHTS}...")
         return
-    bot.send_message(user_id, "🚀 أرسل رابط Cloud Shell الآن:")
+    bot.send_message(user_id, "🚀 أرسل الرابط كما هو، وسأقوم بتنظيفه وصنع الملف فوراً.")
+
+@bot.message_handler(func=lambda m: "cloudshell.dev" in m.text)
+def handle_link(message):
+    user_id = message.from_user.id
+    if user_id in authorized_users or user_id == ADMIN_ID:
+        # --- عملية التنظيف التلقائي الذكية ---
+        raw_text = message.text.strip()
+        if not raw_text.startswith("http"):
+            raw_text = "https://" + raw_text
+        
+        parsed_url = urlparse(raw_text)
+        clean_host = parsed_url.netloc # يستخرج الهوست فقط (بدون المسارات والزوائد)
+        
+        user_steps[message.chat.id] = {'url': clean_host}
+        
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("آسيا سيل 🟡", callback_data="net_asia"),
+                   types.InlineKeyboardButton("أثير 🔴", callback_data="net_atheer"),
+                   types.InlineKeyboardButton("آسيا + أثير 🟢", callback_data="net_mixed"))
+        bot.reply_to(message, f"✅ تم تنظيف الرابط بنجاح!\n🌐 **الهوست المستخرج:** `{clean_host}`\n\nاختر الشبكة الآن:", parse_mode="Markdown", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
@@ -56,39 +75,24 @@ def callback_handler(call):
     elif call.data.startswith("auth_"):
         uid = int(call.data.split("_")[1])
         authorized_users.add(uid)
-        bot.send_message(uid, "✅ تم تفعيلك بنجاح! يمكنك إرسال الروابط الآن.")
+        bot.send_message(uid, "✅ تم تفعيلك! يمكنك الآن إرسال الروابط.")
         bot.edit_message_text(f"✅ تم تفعيل {uid}", ADMIN_ID, call.message.message_id)
-    
-    # اختيار نوع الباقة بعد اختيار الشبكة
     elif call.data.startswith("net_"):
         net = call.data.split("_")[1]
         user_steps[chat_id]['net'] = net
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("باقة سوشيال ✅", callback_data=f"mode_social_{net}"),
                    types.InlineKeyboardButton("بدون باقة ❌", callback_data=f"mode_direct_{net}"))
-        bot.edit_message_text(f"🛠️ خيارات {net.upper()}:\nاختر نوع الاتصال المطلوبة:", chat_id, call.message.message_id, reply_markup=markup)
-    
-    # المعالجة النهائية وصنع الملف
+        bot.edit_message_text(f"🛠️ اختر النوع لشبكة {net.upper()}:", chat_id, call.message.message_id, reply_markup=markup)
     elif call.data.startswith("mode_"):
         _, mode, net = call.data.split("_")
         create_ultra_file(chat_id, mode, net)
 
-@bot.message_handler(func=lambda m: "cloudshell.dev" in m.text)
-def handle_link(message):
-    if message.from_user.id in authorized_users or message.from_user.id == ADMIN_ID:
-        user_steps[message.chat.id] = {'url': message.text.split('?')[0].strip()}
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("آسيا سيل 🟡", callback_data="net_asia"))
-        markup.add(types.InlineKeyboardButton("أثير 🔴", callback_data="net_atheer"))
-        markup.add(types.InlineKeyboardButton("آسيا + أثير 🟢", callback_data="net_mixed"))
-        bot.reply_to(message, "🌐 اختر الشبكة:", reply_markup=markup)
-
 def create_ultra_file(chat_id, mode, net):
     data = user_steps.get(chat_id)
-    host = data['url'].replace("https://", "").strip()
+    host = data['url']
     sni = random.choice(SNI_LIST)
     
-    # إعدادات البروكسي الذكية
     proxy = "104.18.24.243" 
     if "atheer" in net: proxy = "157.240.9.39"
     
@@ -115,11 +119,9 @@ def create_ultra_file(chat_id, mode, net):
     }
     
     encoded = base64.b64encode(json.dumps(config).encode()).decode()
-    file_label = "SOCIAL" if mode == "social" else "DIRECT"
-    file_name = f"VVIP_{MY_RIGHTS}_{net}_{file_label}.dark"
-    
+    file_name = f"VVIP_{MY_RIGHTS}_{net}_{mode}.dark"
     with io.BytesIO(f"darktunnel://{encoded}".encode()) as f:
         f.name = file_name
-        bot.send_document(chat_id, f, caption=f"✅ **تم تجهيز ملف {MY_RIGHTS}**\n📡 الشبكة: {net.upper()}\n⚙️ النظام: {file_label}\n🔓 المسار: / (Fixed)")
+        bot.send_document(chat_id, f, caption=f"✅ **جاهز يا {MY_RIGHTS}!**\n👤 المالك: {MY_RIGHTS}\n🔗 الهوست: `{host}`\n🔓 النوع: {mode.upper()}")
 
 bot.infinity_polling()
