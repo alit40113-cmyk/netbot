@@ -9,7 +9,7 @@ from telebot import types
 # --- الإعدادات ---
 TOKEN = '8367506658:AAFJVj903YeBPWGyCfVlUQcLPbnEDO5wV8Q'
 ADMIN_ID = 1049669606  # أيديك الصحيح
-CHANNELS = ["@YourChannel1"] # استبدل بيوزر قناتك
+CHANNELS = ["@teamofghost"] # استبدل بيوزر قناتك
 bot = telebot.TeleBot(TOKEN)
 
 # حقوقك الشخصية
@@ -121,3 +121,4 @@ def handle_link(message):
 
 print(f"✅ Bot is Online by {MY_RIGHTS} with Full Security")
 bot.polling(none_stop=True)
+
