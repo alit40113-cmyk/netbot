@@ -8,7 +8,7 @@ from telebot import types
 
 # --- الإعدادات ---
 TOKEN = '8367506658:AAFJVj903YeBPWGyCfVlUQcLPbnEDO5wV8Q'
-ADMIN_ID = 123456789  # !!! استبدل هذا برقم أيديك الحقيقي
+ADMIN_ID = 1049669606  # !!! استبدل هذا برقم أيديك الحقيقي
 CHANNELS = ["@YourChannel1"]
 bot = telebot.TeleBot(TOKEN)
 
@@ -112,3 +112,4 @@ def handle_link(message):
 
 print("✅ Bot is Online and Waiting for messages...")
 bot.polling(none_stop=True)
+
