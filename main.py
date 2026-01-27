@@ -8,31 +8,27 @@ import re
 from telebot import types
 from urllib.parse import unquote
 
-# --- الإعدادات الأساسية ---
+# --- الإعدادات ---
 TOKEN = '8367506658:AAFJVj903YeBPWGyCfVlUQcLPbnEDO5wV8Q'
 ADMIN_ID = 1049669606 
-CHANNELS = ["@teamofghost"] # يوزر قناتك
+CHANNELS = ["@teamofghost"]
 bot = telebot.TeleBot(TOKEN)
-
 MY_RIGHTS = "Alikhalafm"
-SNI_LIST = ["www.google.com", "appleid.apple.com"]
 
-# قواعد بيانات مؤقتة (تصفر عند إعادة تشغيل البوت)
 authorized_users = set()
 user_steps = {}
 
-# --- وظائف الحماية والاستخراج ---
+# --- الدوال الأساسية ---
 
 def extract_host_smartly(text):
     text = unquote(text)
-    # يبحث عن الهوست الصافي مهما كانت المنطقة (gnas أو tqsw أو غيرها)
+    # النمط الجديد يدعم gnas و tqsw وأي منطقة أخرى تظهر مستقبلاً
     match = re.search(r'([a-zA-Z0-9\-]+\.ql\-[a-z0-9\-]+\.cloudshell\.dev)', text)
     if match:
         return match.group(1).strip().lower()
     return None
 
 def check_sub(user_id):
-    """التحقق من اشتراك المستخدم في القناة"""
     for channel in CHANNELS:
         try:
             status = bot.get_chat_member(channel, user_id).status
@@ -43,71 +39,58 @@ def check_sub(user_id):
 def generate_stealth(length=6000):
     return ''.join(random.choices(string.ascii_letters + string.digits + "!@#$%^&*", k=length))
 
-# --- معالجة الأوامر ---
+# --- معالجة الرسائل ---
 
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.from_user.id
-    
-    # 1. فحص الاشتراك الإجباري
     if not check_sub(user_id):
         markup = types.InlineKeyboardMarkup()
         for ch in CHANNELS:
-            markup.add(types.InlineKeyboardButton("اضغط هنا للاشتراك 🔗", url=f"https://t.me/{ch.replace('@','')}"))
+            markup.add(types.InlineKeyboardButton("اشتراك 🔗", url=f"https://t.me/{ch.replace('@','')}"))
         markup.add(types.InlineKeyboardButton("تم الاشتراك ✅", callback_data="verify_sub"))
-        bot.send_message(user_id, f"⚠️ عذراً عزيزي، يجب أن تشترك في قناة المطور {MY_RIGHTS} لتتمكن من استخدام البوت:", reply_markup=markup)
+        bot.send_message(user_id, f"⚠️ اشترك أولاً في قناة {MY_RIGHTS}:", reply_markup=markup)
         return
 
-    # 2. فحص موافقة الأدمن
     if user_id not in authorized_users and user_id != ADMIN_ID:
-        # إرسال طلب للأدمن
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("تفعيل المستخدم ✅", callback_data=f"auth_{user_id}"))
-        bot.send_message(ADMIN_ID, f"🔔 طلب تفعيل جديد:\n👤 الاسم: {message.from_user.first_name}\n🆔 الآيدي: `{user_id}`", reply_markup=markup)
-        
-        bot.send_message(user_id, "⏳ تم إرسال طلبك للمطور، انتظر التفعيل...")
+        bot.send_message(ADMIN_ID, f"🔔 طلب تفعيل: `{user_id}`", 
+                         reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("تفعيل ✅", callback_data=f"auth_{user_id}")))
+        bot.send_message(user_id, "⏳ انتظر موافقة الأدمن...")
         return
-
-    bot.send_message(user_id, f"🚀 أهلاً بك في بوت {MY_RIGHTS}.\nأرسل رابط المختبر (حتى لو كان gnas) وسأقوم بصنع الملف!")
+    bot.send_message(user_id, "🚀 أرسل رابط المختبر (gnas أو tqsw) وسأقوم بصنع الملف!")
 
 @bot.message_handler(func=lambda m: True)
-def handle_all_messages(message):
+def handle_messages(message):
     user_id = message.from_user.id
-    
-    # التحقق من الصلاحية قبل المعالجة
     if user_id in authorized_users or user_id == ADMIN_ID:
         clean_host = extract_host_smartly(message.text)
-        
         if clean_host:
             user_steps[message.chat.id] = {'url': clean_host}
             markup = types.InlineKeyboardMarkup()
+            # إضافة خيار آسيا + أثير هنا
             markup.add(types.InlineKeyboardButton("آسيا سيل 🟡", callback_data="net_asia"),
                        types.InlineKeyboardButton("أثير 🔴", callback_data="net_atheer"))
-            bot.reply_to(message, f"🎯 تم استخراج الهوست بنجاح:\n`{clean_host}`\n\nاختر نوع الشبكة:", parse_mode="Markdown", reply_markup=markup)
+            markup.add(types.InlineKeyboardButton("آسيا + أثير 🟢", callback_data="net_mixed"))
+            bot.reply_to(message, f"🎯 تم استخراج الهوست:\n`{clean_host}`\n\nاختر الشبكة:", parse_mode="Markdown", reply_markup=markup)
         else:
-            bot.reply_to(message, "❌ الرابط غير صحيح أو لا يحتوي على عنوان Cloud Shell.")
+            bot.reply_to(message, "❌ لم يتم العثور على رابط صالح.")
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     chat_id = call.message.chat.id
-    user_id = call.from_user.id
-
-    if call.data == "verify_sub":
-        start(call.message)
-    
+    if call.data == "verify_sub": start(call.message)
     elif call.data.startswith("auth_"):
-        new_uid = int(call.data.split("_")[1])
-        authorized_users.add(new_uid)
-        bot.send_message(new_uid, "✅ تم تفعيل حسابك من قبل المطور! يمكنك الآن استخدام البوت.")
-        bot.edit_message_text(f"✅ تم تفعيل المستخدم {new_uid}", ADMIN_ID, call.message.message_id)
-
+        uid = int(call.data.split("_")[1]); authorized_users.add(uid)
+        bot.send_message(uid, "✅ تم تفعيلك!"); bot.edit_message_text(f"✅ تم تفعيل {uid}", ADMIN_ID, call.message.message_id)
+    
     elif call.data.startswith("net_"):
         net = call.data.split("_")[1]
         user_steps[chat_id]['net'] = net
+        # سيسأل عن الباقة لكل الأنواع بما فيها mixed
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("باقة سوشيال ✅", callback_data=f"mode_social_{net}"),
-                   types.InlineKeyboardButton("بدون باقة (Direct) ❌", callback_data=f"mode_direct_{net}"))
-        bot.edit_message_text(f"🛠️ اختر الإعداد لشبكة {net.upper()}:", chat_id, call.message.message_id, reply_markup=markup)
+                   types.InlineKeyboardButton("بدون باقة ❌", callback_data=f"mode_direct_{net}"))
+        bot.edit_message_text(f"🛠️ اختر الإعداد لـ {net.upper()}:", chat_id, call.message.message_id, reply_markup=markup)
 
     elif call.data.startswith("mode_"):
         _, mode, net = call.data.split("_")
@@ -116,11 +99,15 @@ def callback_handler(call):
 def create_file(chat_id, mode, net):
     data = user_steps.get(chat_id)
     host = data['url']
-    sni = random.choice(SNI_LIST)
+    sni = "www.google.com" # SNI افتراضي مستقر
+    
+    # تحديد البروكسي: إذا كان "mixed" نستخدم بروكسي آسيا كونه يدعم الأثنين غالباً
+    proxy = "104.18.24.243" 
+    if net == "atheer": proxy = "157.240.9.39"
     
     config = {
         "type": "VLESS",
-        "name": f"🛡️ VVIP-{MY_RIGHTS}-{net.upper()}",
+        "name": f"🛡️ VVIP-{MY_RIGHTS}-{net.upper()}-{mode.upper()}",
         "isLocked": True,
         "vlessTunnelConfig": {
             "v2rayConfig": {
@@ -132,7 +119,7 @@ def create_file(chat_id, mode, net):
             "injectConfig": {
                 "enabled": True if mode == "social" else False,
                 "mode": "PROXY",
-                "proxyHost": "157.240.9.39" if "atheer" in net else "104.18.24.243",
+                "proxyHost": proxy,
                 "payload": "CONNECT [host]:[port] HTTP/1.1[crlf]Host: [host][crlf]Connection: keep-alive[crlf][crlf]"
             }
         },
@@ -141,9 +128,8 @@ def create_file(chat_id, mode, net):
     }
     
     encoded = base64.b64encode(json.dumps(config).encode()).decode()
-    file_name = f"VVIP_{MY_RIGHTS}_{net}_{mode}.dark"
     with io.BytesIO(f"darktunnel://{encoded}".encode()) as f:
-        f.name = file_name
-        bot.send_document(chat_id, f, caption=f"✅ تم صنع الملف بنجاح!\n🔗 الهوست: `{host}`\n🛡️ تشفير Ultra Stealth: مشتغل ⚡")
+        f.name = f"VVIP_{MY_RIGHTS}_{net}_{mode}.dark"
+        bot.send_document(chat_id, f, caption=f"✅ تم التجهيز بنجاح!\n🌐 الشبكة: {net.upper()}\n🔓 النوع: {mode.upper()}")
 
 bot.infinity_polling()
