@@ -1,1 +1,2 @@
-worker: python main.py
+COPY requirements.txt .
+RUN pip install -r requirements.txt
