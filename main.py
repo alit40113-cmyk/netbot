@@ -1,86 +1,84 @@
 import logging
 import base64
+import json
 import os
-import urllib.parse
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# --- الإعدادات ---
+# --- الإعدادات الشخصية ---
 BOT_TOKEN = "8290590965:AAGhdoPmd2L-VvXzpWmWKzxfpslpFZlyXeg" 
-AUTHOR = "@Alikhalafm"
+MY_ID = "@Alikhalafm"
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-
-def ultra_encrypt(raw_data):
-    """
-    أقوى وظيفة تشفير للملف:
-    1. تحويل النص لـ UTF-8
-    2. تشفير Base64 مرتين
-    3. إضافة بصمة المطور المشفرة
-    """
-    first_layer = base64.b64encode(raw_data.encode()).decode()
-    second_layer = base64.b64encode(f"DARK_BY_{AUTHOR}_{first_layer}".encode()).decode()
-    return f"DARK_SECURE_V3_{second_layer}_END"
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        f"🛡️ مرحباً بك في أقوى بوت لتشفير ملفات الدارك.\n\n"
-        f"أرسل الرابط وسأقوم بتوليد ملف .dark بتشفير عسكري لا يمكن كسره.\n\n"
-        f"بواسطة المبرمج: {AUTHOR}"
-    )
+    await update.message.reply_text(f"📥 أرسل لي أي ملف .dark وسأقوم بتغيير جميع الحقوق لاسمك {MY_ID} فوراً!")
 
-async def handle_encryption(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    input_text = update.message.text
-    if "token=" not in input_text:
-        await update.message.reply_text("❌ الرابط غير صالح أو لا يحتوي على توكن!")
+async def process_dark_logic(content):
+    # إزالة البادئة وفك التشفير
+    raw_encoded = content.replace("darktunnel://", "")
+    decoded_json = json.loads(base64.b64decode(raw_encoded).decode())
+
+    # --- تبديل الحقوق في كل مكان داخل الملف --- 
+    decoded_json["name"] = f"VIP BY {MY_ID}" # تغيير الاسم الظاهر
+    
+    if "vlessTunnelConfig" in decoded_json:
+        conf = decoded_json["vlessTunnelConfig"]["v2rayConfig"]
+        conf["wsPath"] = f"/Telegram/{MY_ID}" # تغيير مسار التليجرام
+        
+        inject = decoded_json["vlessTunnelConfig"]["injectConfig"]
+        # تغيير الحقوق داخل البايلود (Payload) 
+        inject["payload"] = f"CONNECT [host]:[port] HTTP/1.1[crlf]X-Developer: {MY_ID}[crlf][crlf]"
+
+    # إعادة التشفير
+    new_encoded = base64.b64encode(json.dumps(decoded_json).encode()).decode()
+    return f"darktunnel://{new_encoded}"
+
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    doc = update.message.document
+    if not doc.file_name.endswith(".dark"):
+        await update.message.reply_text("❌ يرجى إرسال ملف ينتهي بامتداد .dark")
         return
 
-    status = await update.message.reply_text("🔐 جاري التشفير العسكري (Ultra Encryption)...")
+    status = await update.message.reply_text("🔄 جاري سحب الملف وتغيير الحقوق...")
+    
+    # تحميل الملف
+    file = await context.bot.get_file(doc.file_id)
+    file_path = "temp_file.dark"
+    await file.download_to_drive(file_path)
 
     try:
-        # استخراج البيانات
-        parsed_url = urllib.parse.urlparse(input_text)
-        params = urllib.parse.parse_qs(parsed_url.query)
-        token = params.get('token', [''])[0]
-        sni = "www.skills.google" # ثغرة أودي/جوجل
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read()
 
-        # الرابط الخام قبل التشفير
-        raw_config = f"vless://{token}@{sni}:443?encryption=none&security=tls&sni={sni}&type=ws&host={sni}&path=%2F#Ultra_Dark_{AUTHOR}"
+        # معالجة الملف وتغيير الحقوق
+        new_dark_content = await process_dark_logic(content)
 
-        # تطبيق أقوى تشفير
-        encrypted_data = ultra_encrypt(raw_config)
+        # حفظ الملف الجديد
+        new_file_name = f"Updated_{MY_ID}.dark"
+        with open(new_file_name, "w", encoding="utf-8") as f:
+            f.write(new_dark_content)
 
-        # بناء هيكل الملف النهائي للآيفون والأندرويد
-        dark_file_content = (
-            f"// {AUTHOR} PRIVATE CONFIG\n"
-            f"// ENCRYPTION_LEVEL: ULTRA_V3\n"
-            f"// FOR_IPHONE_USE_NPV_TUNNEL\n"
-            f"PAYLOAD: {encrypted_data}\n"
-            f"SIGNATURE: {base64.b64encode(AUTHOR.encode()).decode()}"
-        )
-
-        file_name = f"Encrypted_Dark_{AUTHOR}.dark"
-        with open(file_name, "w", encoding="utf-8") as f:
-            f.write(dark_file_content)
-
-        # إرسال الملف
-        with open(file_name, "rb") as f:
+        # إرسال الملف المعدل
+        with open(new_file_name, "rb") as f:
             await update.message.reply_document(
                 document=f,
-                filename=file_name,
-                caption=f"✅ تم التشفير بنجاح!\n\n📂 هذا الملف مغلق بأقوى حماية.\n👤 الحقوق: {AUTHOR}\n🏎 السرعة: 400MB"
+                filename=new_file_name,
+                caption=f"✅ تم تغيير حقوق الملف بنجاح!\n\n👤 الحقوق الجديدة: {MY_ID}"
             )
-
+        
+        os.remove(file_path)
+        os.remove(new_file_name)
         await status.delete()
-        os.remove(file_name)
 
     except Exception as e:
-        await update.message.reply_text(f"⚠️ فشل التشفير: {str(e)}")
+        await update.message.reply_text(f"⚠️ حدث خطأ: تأكد أن الملف غير تالف.")
 
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_encryption))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    print("البوت يعمل الآن... بانتظار الملفات.")
     app.run_polling()
 
 if __name__ == "__main__":
